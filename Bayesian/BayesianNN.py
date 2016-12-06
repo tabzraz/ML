@@ -15,10 +15,18 @@ class BayesianFC:
         self.qb_p = tf.Variable(initial_value=np.zeros(shape=(output_dim)), dtype=tf.float32)
 
         # Prior Parameters
-        self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
-        self.pw_sigma = tf.constant(value=np.ones(shape=(input_dim, output_dim)) * 1, dtype=tf.float32)
-        self.pb_mean = tf.constant(initial_value=np.ones(shape=(output_dim)) * 0.1, dtype=tf.float32)
-        self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
+        # self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
+        # self.pw_sigma = tf.constant(value=np.ones(shape=(input_dim, output_dim)) * 1, dtype=tf.float32)
+        # self.pb_mean = tf.constant(initial_value=np.ones(shape=(output_dim)) * 0.1, dtype=tf.float32)
+        # self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
+        self.pw_mean = 0
+        self.pw_sigma = 1
+        self.pb_mean = 0.1
+        self.pb_sigma = 1
+
+        # Likelihood std
+        # todo: change this to be an output of the network?
+        self.likelihood_std = 1
 
     def output(self, input, W=None, b=None, sample=False):
         # If we have not provided the weights, then use our distribution to generate them
@@ -40,7 +48,7 @@ class BayesianFC:
 
     def update(self, data, N):
 
-        # data = [(input, output)]
+        loss = 0
 
         for _ in range(N):
             # Sample weights
@@ -60,8 +68,19 @@ class BayesianFC:
             pw_i += tf.reduce_sum(self.gaussian_pdf(b, self.pb_mean, self.pb_sigma))
             log_pw_i = tf.log(pw_i)
 
+            data_likelihood = 0
             for (x, y) in data:
+                # We assume the nn is a probabilistic model P(y|x,w)
                 output = self.output(x, W=W, b=b)
+                data_likelihood += tf.reduce_sum(self.gaussian_pdf(y, output, self.likelihood_std))
+
+            log_data_likelihood = tf.log(data_likelihood)
+
+            loss += -log_qw_i - log_pw_i - log_data_likelihood
+
+
+
+
 
 
 
