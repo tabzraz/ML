@@ -21,12 +21,12 @@ class BayesianFC:
         # self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
         self.pw_mean = 0
         self.pw_sigma = 1
-        self.pb_mean = 0.1
+        self.pb_mean = 0
         self.pb_sigma = 1
 
         # Likelihood std
         # todo: change this to be an output of the network?
-        self.likelihood_std = 1
+        self.likelihood_std = 0.5
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -76,7 +76,7 @@ class BayesianFC:
 
         log_data_likelihood = tf.log(data_likelihood)
 
-        loss = -log_qw_i - log_pw_i - log_data_likelihood
+        loss = log_qw_i - log_pw_i - log_data_likelihood
 
         weight_variables = [W, b]
         variational_mean_variables = [self.qw_mean, self.qb_mean]
