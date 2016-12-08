@@ -19,7 +19,7 @@ class BayesianFC:
         # self.pw_sigma = tf.constant(value=np.ones(shape=(input_dim, output_dim)) * 1, dtype=tf.float32)
         # self.pb_mean = tf.constant(initial_value=np.ones(shape=(output_dim)) * 0.1, dtype=tf.float32)
         # self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
-        self.pw_mean = 1.0
+        self.pw_mean = 0.0
         self.pw_sigma = 1.0
         self.pb_mean = 0.0
         self.pb_sigma = 1.0
