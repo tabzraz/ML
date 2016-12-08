@@ -26,7 +26,7 @@ class BayesianFC:
 
         # Likelihood std
         # todo: change this to be an output of the network?
-        self.likelihood_std = 0.5
+        self.likelihood_std = 1
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -45,12 +45,13 @@ class BayesianFC:
             b = self.qb_mean + tf.nn.softplus(self.qb_p) * epsilon_b
 
         # Now we have the weights, calculate the output of the network
-        return tf.nn.relu(tf.matmul(input, W) + b)
+        return tf.matmul(input, W) + b
+        # return tf.nn.relu(tf.matmul(input, W) + b)
 
     def gaussian_pdf(self, x, mu, sigma):
         return tf.exp(-((x - mu)**2) / 2 * (sigma**2)) / tf.sqrt(2 * np.pi * (sigma**2))
 
-    def calculate_loss(self, data):
+    def calculate_loss(self, data_input, data_target):
         # Sample weights
         epsilon_w = tf.random_normal(shape=(self.input_dim, self.output_dim))
         epsilon_b = tf.random_normal(shape=(self.output_dim, ))
@@ -69,10 +70,9 @@ class BayesianFC:
         log_pw_i = tf.log(pw_i)
 
         data_likelihood = 0
-        for (x, y) in data:
-            # We assume the nn is a probabilistic model P(y|x,w)
-            output = self.output(x, W=W, b=b, sample=False)
-            data_likelihood += tf.reduce_sum(self.gaussian_pdf(y, output, self.likelihood_std))
+        # We assume the nn is a probabilistic model P(y|x,w)
+        output = self.output(data_input, W=W, b=b, sample=False)
+        data_likelihood = tf.reduce_sum(self.gaussian_pdf(data_target, output, self.likelihood_std))
 
         log_data_likelihood = tf.log(data_likelihood)
 
@@ -85,11 +85,13 @@ class BayesianFC:
 
         return loss, weight_variables, variational_mean_variables, variational_std_variables, variational_std_scaling
 
-    def update(self, data, N, optimiser):
+    def update(self, N, optimiser):
         grads_to_apply = None
+        data_input = tf.placeholder(tf.float32, shape=[None, self.input_dim])
+        data_target = tf.placeholder(tf.float32, shape=[None, self.output_dim])
 
         for _ in range(N):
-            loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data)
+            loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target)
 
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
             weight_grads = tf.gradients(loss, w_vars)
@@ -109,4 +111,4 @@ class BayesianFC:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
 
         apply_grads_op = optimiser.apply_gradients(grads_to_apply)
-        return apply_grads_op
+        return apply_grads_op, data_input, data_target, grads_to_apply
