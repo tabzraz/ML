@@ -13,10 +13,10 @@ class BayesianFC:
         self.qb_ps = np.array([])
         # Variational Parameters
         for input_dim, output_dim in zip(self.layer_dims[:-1], self.layer_dims[1:]):
-            self.qw_means = np.append(self.qw_means, tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32))
-            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 2, dtype=tf.float32))
-            self.qb_means = np.append(self.qb_means, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.1, dtype=tf.float32))
-            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 2, dtype=tf.float32))
+            self.qw_means = np.append(self.qw_means, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 0.0, dtype=tf.float32))
+            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * -1.0, dtype=tf.float32))
+            self.qb_means = np.append(self.qb_means, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.0, dtype=tf.float32))
+            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * -1.0, dtype=tf.float32))
 
         # Prior Parameters
         # self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -24,9 +24,15 @@ class BayesianFC:
         # self.pb_mean = tf.constant(initial_value=np.ones(shape=(output_dim)) * 0.1, dtype=tf.float32)
         # self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
         self.pw_mean = 0.0
-        self.pw_sigma = 2.0
+        # self.pw_sigma = 1.0
         self.pb_mean = 0.0
-        self.pb_sigma = 2.0
+        # self.pb_sigma = 1.0
+
+        self.pw_sigma1 = 0.5
+        self.pw_sigma2 = 2.0
+        self.pb_sigma1 = 0.5
+        self.pb_sigma2 = 2.0
+        self.p_pi = 0.5
 
         # Likelihood std
         # todo: change this to be an output of the network?
@@ -35,6 +41,16 @@ class BayesianFC:
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
         # self.b = tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.1, dtype=tf.float32)
+
+    def log_p(self, W, b):
+        # Spike and Slab prior
+        probs = self.p_pi * self.gaussian_pdf(W, self.pw_mean, self.pw_sigma1) + (1.0 - self.p_pi) * self.gaussian_pdf(W, self.pw_mean, self.pw_sigma2)
+        log_probs = tf.log(probs)
+        log_pw = tf.reduce_sum(log_probs)
+        probs_b = self.p_pi * self.gaussian_pdf(b, self.pb_mean, self.pb_sigma1) + (1.0 - self.p_pi) * self.gaussian_pdf(b, self.pb_mean, self.pb_sigma2)
+        log_probs_b = tf.log(probs_b)
+        log_pw += tf.reduce_sum(log_probs_b)
+        return log_pw
 
     def sample(self):
         Ws = []
@@ -66,7 +82,7 @@ class BayesianFC:
         return tf.exp(-(tf.square(x - mu)) / 2 * tf.square(sigma)) / (tf.sqrt(2 * np.pi) * sigma)
 
     def log_gaussian_clipped_pdf(self, x, mu, sigma):
-        pdf_val = (0.5 * tf.log(2 * np.pi) - tf.log(tf.clip_by_value(sigma, 1e-10, 5)) * tf.square(x - mu) / (2 * tf.square(sigma)))
+        pdf_val = (0.5 * tf.log(2 * np.pi) - tf.log(tf.clip_by_value(sigma, 1e-10, 5.0)) * tf.square(x - mu) / (2 * tf.square(sigma)))
         return tf.clip_by_value(pdf_val, 1e-5, 1.0)
 
     def calculate_loss(self, data_input, data_target):
@@ -94,11 +110,12 @@ class BayesianFC:
             Ws.append(W)
             bs.append(b)
 
-            log_qw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W_sigmas * epsilon_w, 0, W_sigmas))
-            log_qw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b_sigmas * epsilon_b, 0, b_sigmas))
+            log_qw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W_sigmas * epsilon_w, 0.0, W_sigmas))
+            log_qw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b_sigmas * epsilon_b, 0.0, b_sigmas))
 
-            log_pw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W, self.pw_mean, self.pw_sigma))
-            log_pw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b, self.pb_mean, self.pb_sigma))
+            # log_pw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W, self.pw_mean, self.pw_sigma))
+            # log_pw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b, self.pb_mean, self.pb_sigma))
+            log_pw_i = self.log_p(W, b)
 
         # We assume the nn is a probabilistic model P(y|x,w)
         output = self.output(data_input, Ws, bs)
@@ -106,12 +123,13 @@ class BayesianFC:
 
         # todo: divide the first 2 terms by batch size or something
         loss = log_qw_i - log_pw_i - log_data_likelihood
+        loss = -loss
 
         weight_variables = Ws + bs
         variational_mean_variables = np.concatenate([self.qw_means, self.qb_means])
         variational_std_variables = np.concatenate([self.qw_ps, self.qb_ps])
-        variational_std_scaling = epsilon_ws / (1 + np.array([tf.exp(-z) for z in self.qw_ps]))
-        variational_std_scaling = np.concatenate([variational_std_scaling, epsilon_bs / (1 + np.array([tf.exp(-z) for z in self.qb_ps]))])
+        variational_std_scaling = epsilon_ws / (1.0 + np.array([tf.exp(-z) for z in self.qw_ps]))
+        variational_std_scaling = np.concatenate([variational_std_scaling, epsilon_bs / (1.0 + np.array([tf.exp(-z) for z in self.qb_ps]))])
         # + (epsilon_bs / (1 + tf.exp(-self.qb_ps)))
 
         return loss, weight_variables, variational_mean_variables.tolist(), variational_std_variables.tolist(), variational_std_scaling.tolist()
@@ -142,4 +160,4 @@ class BayesianFC:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
 
         apply_grads_op = optimiser.apply_gradients(grads_to_apply)
-        return apply_grads_op, data_input, data_target, grads_to_apply, weight_grads, variational_mean_grads_and_vars, variational_std_grads_and_vars
+        return apply_grads_op, data_input, data_target, loss
