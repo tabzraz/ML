@@ -45,10 +45,11 @@ class BayesianFC:
     def log_p(self, W, b):
         # Spike and Slab prior
         probs = self.p_pi * self.gaussian_pdf(W, self.pw_mean, self.pw_sigma1) + (1.0 - self.p_pi) * self.gaussian_pdf(W, self.pw_mean, self.pw_sigma2)
-        log_probs = tf.log(probs)
+        log_probs = tf.log(tf.clip_by_value(probs, 1e-10, 5.0))
         log_pw = tf.reduce_sum(log_probs)
+
         probs_b = self.p_pi * self.gaussian_pdf(b, self.pb_mean, self.pb_sigma1) + (1.0 - self.p_pi) * self.gaussian_pdf(b, self.pb_mean, self.pb_sigma2)
-        log_probs_b = tf.log(probs_b)
+        log_probs_b = tf.log(tf.clip_by_value(probs_b, 1e-10, 5.0))
         log_pw += tf.reduce_sum(log_probs_b)
         return log_pw
 
@@ -85,7 +86,7 @@ class BayesianFC:
         pdf_val = (0.5 * tf.log(2 * np.pi) - tf.log(tf.clip_by_value(sigma, 1e-10, 5.0)) * tf.square(x - mu) / (2 * tf.square(sigma)))
         return tf.clip_by_value(pdf_val, 1e-5, 1.0)
 
-    def calculate_loss(self, data_input, data_target):
+    def calculate_loss(self, data_input, data_target, minibatch_scaling=1.0):
         epsilon_ws = []
         epsilon_bs = []
         Ws = []
@@ -110,20 +111,20 @@ class BayesianFC:
             Ws.append(W)
             bs.append(b)
 
-            log_qw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W_sigmas * epsilon_w, 0.0, W_sigmas))
-            log_qw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b_sigmas * epsilon_b, 0.0, b_sigmas))
+            log_qw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(W, qw_mean, W_sigmas))
+            log_qw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b, qb_mean, b_sigmas))
 
             # log_pw_i = tf.reduce_sum(self.log_gaussian_clipped_pdf(W, self.pw_mean, self.pw_sigma))
             # log_pw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b, self.pb_mean, self.pb_sigma))
-            log_pw_i = self.log_p(W, b)
+            log_pw_i += self.log_p(W, b)
 
         # We assume the nn is a probabilistic model P(y|x,w)
-        output = self.output(data_input, Ws, bs)
-        log_data_likelihood = tf.reduce_sum(self.log_gaussian_clipped_pdf(data_target, output, self.likelihood_std))
+        pred = self.output(data_input, Ws, bs)
+        log_data_likelihood = tf.reduce_sum(self.log_gaussian_clipped_pdf(data_target, pred, self.likelihood_std))
 
         # todo: divide the first 2 terms by batch size or something
-        loss = log_qw_i - log_pw_i - log_data_likelihood
-        loss = -loss
+        loss = minibatch_scaling * (log_qw_i - log_pw_i) - log_data_likelihood
+        # loss = -loss
 
         weight_variables = Ws + bs
         variational_mean_variables = np.concatenate([self.qw_means, self.qb_means])
@@ -134,14 +135,14 @@ class BayesianFC:
 
         return loss, weight_variables, variational_mean_variables.tolist(), variational_std_variables.tolist(), variational_std_scaling.tolist()
 
-    def update(self, N, optimiser):
+    def update(self, N, optimiser, batch_size=1.0, data_size=1.0):
         grads_to_apply = None
         data_input = tf.placeholder(tf.float32, shape=[None, self.layer_dims[0]])
         data_target = tf.placeholder(tf.float32, shape=[None, self.layer_dims[-1]])
 
         for _ in range(N):
-            loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target)
-
+            loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, float(batch_size / data_size))
+            loss /= float(batch_size)
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
             weight_grads = tf.gradients(loss, w_vars)
             # print(weight_grads)
@@ -160,4 +161,4 @@ class BayesianFC:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
 
         apply_grads_op = optimiser.apply_gradients(grads_to_apply)
-        return apply_grads_op, data_input, data_target, loss
+        return apply_grads_op, data_input, data_target, loss, variational_mean_grads_and_vars
