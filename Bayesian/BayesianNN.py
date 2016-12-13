@@ -36,7 +36,7 @@ class BayesianFC:
 
         # Likelihood std
         # todo: change this to be an output of the network?
-        self.likelihood_std = 0.5
+        self.likelihood_std = 0.1
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -147,7 +147,7 @@ class BayesianFC:
         for _ in range(N):
             new_loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
             new_loss /= (batch_size * N)
-            new_loss = tf.clip_by_value(new_loss, 0.0, 1.0 / N)
+            # new_loss = tf.clip_by_value(new_loss, 0.0, 10.0 / N)
             loss += new_loss
 
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
@@ -158,8 +158,11 @@ class BayesianFC:
             variational_std_grads_and_vars = optimiser.compute_gradients(new_loss, var_list=v_std_vars)
             # print(variational_std_grads_and_vars)
 
+            # new_variational_mean_grads_and_vars = variational_mean_grads_and_vars
+            # new_variational_std_grads_and_vars = variational_std_grads_and_vars
             new_variational_mean_grads_and_vars = [(gw + gv, v) for gw, (gv, v) in zip(weight_grads, variational_mean_grads_and_vars)]
             new_variational_std_grads_and_vars = [(gw * gws + gv, v) for gw, (gv, v), gws in zip(weight_grads, variational_std_grads_and_vars, v_std_scaling)]
+
             concat_grads = new_variational_mean_grads_and_vars + new_variational_std_grads_and_vars
             # concat_grads = new_variational_mean_grads_and_vars
 
@@ -168,5 +171,12 @@ class BayesianFC:
             else:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
 
-        apply_grads_op = optimiser.apply_gradients(grads_to_apply)
-        return apply_grads_op, data_input, data_target, minibatch_scaling, loss, variational_mean_grads_and_vars
+        clipped_policy_grads = []
+        for (grad, var) in grads_to_apply:
+            if grad is not None:
+                clipped_policy_grads.append((tf.clip_by_norm(grad, 10), var))
+            else:
+                clipped_policy_grads.append(None)
+
+        apply_grads_op = optimiser.apply_gradients(clipped_policy_grads)
+        return apply_grads_op, data_input, data_target, minibatch_scaling, loss, grads_to_apply
