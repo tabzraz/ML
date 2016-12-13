@@ -147,6 +147,7 @@ class BayesianFC:
         for _ in range(N):
             new_loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
             new_loss /= (batch_size * N)
+            new_loss = tf.clip_by_value(new_loss, 0.0, 1.0 / N)
             loss += new_loss
 
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
