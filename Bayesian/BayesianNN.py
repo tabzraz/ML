@@ -87,7 +87,7 @@ class BayesianFC:
         return pdf_val
         # return tf.clip_by_value(pdf_val, 1e-10, 1.0)
 
-    def calculate_loss(self, data_input, data_target, minibatch_scaling=1.0):
+    def calculate_loss(self, data_input, data_target, minibatch_scaling):
         epsilon_ws = []
         epsilon_bs = []
         Ws = []
@@ -125,7 +125,7 @@ class BayesianFC:
 
         # todo: divide the first 2 terms by batch size or something
         loss = minibatch_scaling * (log_qw_i - log_pw_i) - log_data_likelihood
-        loss = -loss
+        # loss = -loss
 
         weight_variables = Ws + bs
         variational_mean_variables = np.concatenate([self.qw_means, self.qb_means])
@@ -136,20 +136,25 @@ class BayesianFC:
 
         return loss, weight_variables, variational_mean_variables.tolist(), variational_std_variables.tolist(), variational_std_scaling.tolist()
 
-    def update(self, N, optimiser, batch_size=1.0, minibatch_scaling=1.0):
+    def update(self, N, optimiser, batch_size=1):
         grads_to_apply = None
         data_input = tf.placeholder(tf.float32, shape=[None, self.layer_dims[0]])
         data_target = tf.placeholder(tf.float32, shape=[None, self.layer_dims[-1]])
+        minibatch_scaling = tf.placeholder(tf.float32, shape=[1])
 
+        loss = 0.0
+        # todo: change this to run the session to calc concat_grads so we don't have to make a graph with N diff operations
         for _ in range(N):
-            loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
-            loss /= float(batch_size)
+            new_loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
+            new_loss /= (batch_size * N)
+            loss += new_loss
+
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
-            weight_grads = tf.gradients(loss, w_vars)
+            weight_grads = tf.gradients(new_loss, w_vars)
             # print(weight_grads)
-            variational_mean_grads_and_vars = optimiser.compute_gradients(loss, var_list=v_m_vars)
+            variational_mean_grads_and_vars = optimiser.compute_gradients(new_loss, var_list=v_m_vars)
             # print(variational_mean_grads_and_vars)
-            variational_std_grads_and_vars = optimiser.compute_gradients(loss, var_list=v_std_vars)
+            variational_std_grads_and_vars = optimiser.compute_gradients(new_loss, var_list=v_std_vars)
             # print(variational_std_grads_and_vars)
 
             new_variational_mean_grads_and_vars = [(gw + gv, v) for gw, (gv, v) in zip(weight_grads, variational_mean_grads_and_vars)]
@@ -163,4 +168,4 @@ class BayesianFC:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
 
         apply_grads_op = optimiser.apply_gradients(grads_to_apply)
-        return apply_grads_op, data_input, data_target, loss, variational_mean_grads_and_vars
+        return apply_grads_op, data_input, data_target, minibatch_scaling, loss, variational_mean_grads_and_vars
