@@ -6,6 +6,7 @@ class BayesianFC:
 
     def __init__(self, layer_dims):
         self.layer_dims = layer_dims
+        self.num_weights = 0
 
         self.qw_means = np.array([])
         self.qw_ps = np.array([])
@@ -14,9 +15,10 @@ class BayesianFC:
         # Variational Parameters
         for input_dim, output_dim in zip(self.layer_dims[:-1], self.layer_dims[1:]):
             self.qw_means = np.append(self.qw_means, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 0.0, dtype=tf.float32))
-            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * -1.0, dtype=tf.float32))
+            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 2.0, dtype=tf.float32))
             self.qb_means = np.append(self.qb_means, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.0, dtype=tf.float32))
-            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * -1.0, dtype=tf.float32))
+            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 2.0, dtype=tf.float32))
+            self.num_weights += input_dim * output_dim + output_dim
 
         # Prior Parameters
         # self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -37,6 +39,7 @@ class BayesianFC:
         # Likelihood std
         # todo: change this to be an output of the network?
         self.likelihood_std = 0.1
+
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -146,7 +149,7 @@ class BayesianFC:
         # todo: change this to run the session to calc concat_grads so we don't have to make a graph with N diff operations
         for _ in range(N):
             new_loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
-            new_loss /= float(batch_size * N)
+            new_loss /= float(batch_size * N * self.num_weights)
             # new_loss = tf.clip_by_value(new_loss, 0.0, 100.0 / N)
             loss += new_loss
 
