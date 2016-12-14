@@ -92,8 +92,8 @@ class BayesianFC:
         epsilon_bs = []
         Ws = []
         bs = []
-        log_qw_i = 0
-        log_pw_i = 0
+        log_qw_i = 0.0
+        log_pw_i = 0.0
 
         for qw_mean, qw_p, qb_mean, qb_p, input_dim, output_dim in\
                 zip(self.qw_means, self.qw_ps, self.qb_means, self.qb_ps, self.layer_dims[:-1], self.layer_dims[1:]):
@@ -140,14 +140,14 @@ class BayesianFC:
         grads_to_apply = None
         data_input = tf.placeholder(tf.float32, shape=[None, self.layer_dims[0]])
         data_target = tf.placeholder(tf.float32, shape=[None, self.layer_dims[-1]])
-        minibatch_scaling = tf.placeholder(tf.float32, shape=[1])
+        minibatch_scaling = tf.placeholder(tf.float32, shape=[])
 
         loss = 0.0
         # todo: change this to run the session to calc concat_grads so we don't have to make a graph with N diff operations
         for _ in range(N):
             new_loss, w_vars, v_m_vars, v_std_vars, v_std_scaling = self.calculate_loss(data_input, data_target, minibatch_scaling)
-            new_loss /= (batch_size * N)
-            # new_loss = tf.clip_by_value(new_loss, 0.0, 10.0 / N)
+            new_loss /= float(batch_size * N)
+            # new_loss = tf.clip_by_value(new_loss, 0.0, 100.0 / N)
             loss += new_loss
 
             # weight_grads_and_vars = optimiser.compute_gradients(loss, var_list=w_vars)
