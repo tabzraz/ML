@@ -15,35 +15,42 @@ class BayesianFC:
         # Variational Parameters
         for input_dim, output_dim in zip(self.layer_dims[:-1], self.layer_dims[1:]):
             self.qw_means = np.append(self.qw_means, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 0.0, dtype=tf.float32))
-            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 2.0, dtype=tf.float32))
+            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 1.0, dtype=tf.float32))
             self.qb_means = np.append(self.qb_means, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.0, dtype=tf.float32))
-            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 2.0, dtype=tf.float32))
+            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 1.0, dtype=tf.float32))
             self.num_weights += input_dim * output_dim + output_dim
 
+        self.variables = np.concatenate([self.qw_means, self.qw_ps, self.qb_means, self.qb_ps]).tolist()
         # Prior Parameters
         # self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
         # self.pw_sigma = tf.constant(value=np.ones(shape=(input_dim, output_dim)) * 1, dtype=tf.float32)
         # self.pb_mean = tf.constant(initial_value=np.ones(shape=(output_dim)) * 0.1, dtype=tf.float32)
         # self.pb_sigma = tf.constant(initial_value=np.ones(shape=(output_dim)) * 1, dtype=tf.float32)
         self.pw_mean = 0.0
-        # self.pw_sigma = 1.0
+        self.pw_sigma = 1.0
         self.pb_mean = 0.0
-        # self.pb_sigma = 1.0
+        self.pb_sigma = 1.0
 
-        self.pw_sigma1 = 0.5
-        self.pw_sigma2 = 2.5
-        self.pb_sigma1 = 0.5
-        self.pb_sigma2 = 2.5
-        self.p_pi = 0.5
+        # Params for spike and slab prior
+        # self.pw_sigma1 = 0.5
+        # self.pw_sigma2 = 2.5
+        # self.pb_sigma1 = 0.5
+        # self.pb_sigma2 = 2.5
+        # self.p_pi = 0.5
 
         # Likelihood std
         # todo: change this to be an output of the network?
-        self.likelihood_std = 0.1
-
+        self.likelihood_std = 0.5
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
         # self.b = tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.1, dtype=tf.float32)
+
+    # KL(q || p) where q and p are both fully factorized gaussians
+    def kl_q_p(self, q_mean, q_sigma, p_mean, p_sigma):
+        log_term = tf.log(p_sigma / (q_sigma + 1e-8))
+        mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-8)
+        return tf.reduce_sum(log_term + mean_term) - tf.size(q_mean, out_type=tf.float32) * 0.5
 
     def log_p(self, W, b):
         # Spike and Slab prior
@@ -86,7 +93,7 @@ class BayesianFC:
         return tf.exp(-(tf.square(x - mu)) / 2 * tf.square(sigma)) / (tf.sqrt(2 * np.pi) * sigma)
 
     def log_gaussian_pdf(self, x, mu, sigma):
-        pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(sigma)) - (tf.square(x - mu) / (2 * tf.square(sigma)))
+        pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(tf.clip_by_value(sigma, 1e-3, 1e8))) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-3))
         return pdf_val
         # return tf.clip_by_value(pdf_val, 1e-10, 1.0)
 
@@ -97,6 +104,7 @@ class BayesianFC:
         bs = []
         log_qw_i = 0.0
         log_pw_i = 0.0
+        kl_div = 0.0
 
         for qw_mean, qw_p, qb_mean, qb_p, input_dim, output_dim in\
                 zip(self.qw_means, self.qw_ps, self.qb_means, self.qb_ps, self.layer_dims[:-1], self.layer_dims[1:]):
@@ -122,12 +130,18 @@ class BayesianFC:
             # log_pw_i += tf.reduce_sum(self.log_gaussian_clipped_pdf(b, self.pb_mean, self.pb_sigma))
             log_pw_i += self.log_p(W, b)
 
+            qw_sigma = tf.nn.softplus(qw_p)
+            qb_sigma = tf.nn.softplus(qb_p)
+            kl_div += self.kl_q_p(qw_mean, qw_sigma, self.pw_mean, self.pw_sigma)
+            kl_div += self.kl_q_p(qb_mean, qb_sigma, self.pb_mean, self.pb_sigma)
+
         # We assume the nn is a probabilistic model P(y|x,w)
         pred = self.output(data_input, Ws, bs)
         log_data_likelihood = tf.reduce_sum(self.log_gaussian_pdf(data_target, pred, self.likelihood_std))
 
         # todo: divide the first 2 terms by batch size or something
         loss = minibatch_scaling * (log_qw_i - log_pw_i) - log_data_likelihood
+        # loss = minibatch_scaling * kl_div - log_data_likelihood
         # loss = -loss
 
         weight_variables = Ws + bs
@@ -173,6 +187,7 @@ class BayesianFC:
                 grads_to_apply = concat_grads
             else:
                 grads_to_apply = [(g + ug, v) for (g, v), (ug, _) in zip(grads_to_apply, concat_grads)]
+        # grads_to_apply = optimiser.compute_gradients(loss, var_list=self.variables)
 
         clipped_policy_grads = []
         for (grad, var) in grads_to_apply:
@@ -183,3 +198,81 @@ class BayesianFC:
 
         apply_grads_op = optimiser.apply_gradients(clipped_policy_grads)
         return apply_grads_op, data_input, data_target, minibatch_scaling, loss, grads_to_apply
+
+    def sampled_output(self, data_input, batch_size):
+        # batch_size = tf.shape(data_input[0])[0]
+        # batch_size = 100
+        # batch_size = tf.placeholder(tf.int32, shape=[])
+        # HACK
+        activations = [tf.nn.relu for _ in self.layer_dims[1:]]
+        activations[-1] = tf.identity
+        for qw_mean, qw_p, qb_mean, qb_p, output_dim, activ in\
+                zip(self.qw_means, self.qw_ps, self.qb_means, self.qb_ps, self.layer_dims[1:], activations):
+
+            qw_sigma = tf.nn.softplus(qw_p)
+            qb_sigma = tf.nn.softplus(qb_p)
+
+            gamma = tf.matmul(data_input, qw_mean) + qb_mean
+            # print(gamma)
+            delta = tf.matmul(tf.square(data_input), tf.square(qw_sigma)) + tf.square(qb_sigma)
+            # print(delta)
+            epsilon = tf.random_normal(shape=(batch_size, output_dim))
+            # print(epsilon)
+
+            noisy_activations = gamma + tf.sqrt(delta) * epsilon
+            # print(noisy_activations)
+
+            # epsilon_b = tf.random_normal(shape=(batch_size, output_dim))
+            # # print(epsilon_b)
+            # qb_mean_batch = tf.tile(qb_mean, [batch_size])
+            # qb_mean_batch = tf.reshape(qb_mean_batch, [-1, output_dim])
+
+            # qb_sigma_batch = tf.tile(qb_sigma, [batch_size])
+            # qb_sigma_batch = tf.reshape(qb_sigma_batch, [-1, output_dim])
+
+            # noisy_activations_b = qb_mean + qb_sigma * epsilon_b
+            # # noisy_activations_b = qb_mean_batch + qb_sigma_batch * epsilon_b
+            # # print(noisy_activations_b)
+
+            layer_output = activ(noisy_activations)
+            # print(layer_output)
+            data_input = layer_output
+        return data_input
+
+    def update_v2(self, N, optimizer):
+        data_input = tf.placeholder(tf.float32, shape=[None, self.layer_dims[0]])
+        data_target = tf.placeholder(tf.float32, shape=[None, self.layer_dims[-1]])
+        minibatch_kl_scaling = tf.placeholder(tf.float32, shape=[])
+        batch_size = tf.placeholder(tf.int32, shape=[])
+
+        data_loss = 0.0
+        for _ in range(N):
+            prediction = self.sampled_output(data_input, batch_size)
+            data_loss += tf.reduce_sum(self.log_gaussian_pdf(data_target, prediction, self.likelihood_std))
+
+        kl_loss = 0.0
+        for qw_mean, qw_p, qb_mean, qb_p, input_dim, output_dim in\
+                zip(self.qw_means, self.qw_ps, self.qb_means, self.qb_ps, self.layer_dims[:-1], self.layer_dims[1:]):
+            qw_sigma = tf.nn.softplus(qw_p)
+            qb_sigma = tf.nn.softplus(qb_p)
+            kl_loss += self.kl_q_p(qw_mean, qw_sigma, self.pw_mean, self.pw_sigma)
+            kl_loss += self.kl_q_p(qb_mean, qb_sigma, self.pb_mean, self.pb_sigma)
+
+        # print(data_loss)
+        # print(kl_loss)
+        # data_loss = tf.clip_by_value(data_loss, 0)
+        loss = minibatch_kl_scaling * kl_loss - data_loss / N
+
+        grads_to_apply = optimizer.compute_gradients(loss, var_list=self.variables)
+
+        clipped_policy_grads = []
+        for (grad, var) in grads_to_apply:
+            if grad is not None:
+                clipped_policy_grads.append((tf.clip_by_norm(grad, 10), var))
+            else:
+                clipped_policy_grads.append(None)
+
+        # clipped_policy_grads = grads_to_apply
+        apply_grads_op = optimizer.apply_gradients(clipped_policy_grads)
+
+        return apply_grads_op, data_input, data_target, minibatch_kl_scaling, batch_size, loss, kl_loss, -data_loss, clipped_policy_grads
