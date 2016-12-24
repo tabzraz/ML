@@ -15,12 +15,13 @@ class BayesianFC:
         # Variational Parameters
         for input_dim, output_dim in zip(self.layer_dims[:-1], self.layer_dims[1:]):
             self.qw_means = np.append(self.qw_means, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 0.0, dtype=tf.float32))
-            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * 1.0, dtype=tf.float32))
+            self.qw_ps = np.append(self.qw_ps, tf.Variable(initial_value=np.ones(shape=(input_dim, output_dim)) * -1.0, dtype=tf.float32))
             self.qb_means = np.append(self.qb_means, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 0.0, dtype=tf.float32))
-            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * 1.0, dtype=tf.float32))
+            self.qb_ps = np.append(self.qb_ps, tf.Variable(initial_value=np.ones(shape=(output_dim,)) * -1.0, dtype=tf.float32))
             self.num_weights += input_dim * output_dim + output_dim
 
         self.variables = np.concatenate([self.qw_means, self.qw_ps, self.qb_means, self.qb_ps]).tolist()
+        # self.variables = np.concatenate([self.qw_means, self.qb_means]).tolist()
         # Prior Parameters
         # self.pw_mean = tf.constant(value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
         # self.pw_sigma = tf.constant(value=np.ones(shape=(input_dim, output_dim)) * 1, dtype=tf.float32)
@@ -40,7 +41,7 @@ class BayesianFC:
 
         # Likelihood std
         # todo: change this to be an output of the network?
-        self.likelihood_std = 0.5
+        self.likelihood_std = 0.1
 
         # Weight matrices as variables
         # self.W = tf.Variable(initial_value=np.zeros(shape=(input_dim, output_dim)), dtype=tf.float32)
@@ -48,8 +49,8 @@ class BayesianFC:
 
     # KL(q || p) where q and p are both fully factorized gaussians
     def kl_q_p(self, q_mean, q_sigma, p_mean, p_sigma):
-        log_term = tf.log(p_sigma / (q_sigma + 1e-8))
-        mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-8)
+        log_term = tf.log(p_sigma / (q_sigma + 1e-3))
+        mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-3)
         return tf.reduce_sum(log_term + mean_term) - tf.size(q_mean, out_type=tf.float32) * 0.5
 
     def log_p(self, W, b):
@@ -63,7 +64,7 @@ class BayesianFC:
         log_pw += tf.reduce_sum(log_probs_b)
         return log_pw
 
-    def sample(self):
+    def sample(self, use_mean=False):
         Ws = []
         bs = []
         sample_input = tf.placeholder(tf.float32, shape=[None, self.layer_dims[0]])
@@ -73,6 +74,10 @@ class BayesianFC:
 
             epsilon_w = tf.random_normal(shape=(input_dim, output_dim))
             epsilon_b = tf.random_normal(shape=(output_dim, ))
+
+            if use_mean:
+                epsilon_w = 0.0
+                epsilon_b = 0.0
 
             W = qw_mean + tf.nn.softplus(qw_p) * epsilon_w
             b = qb_mean + tf.nn.softplus(qb_p) * epsilon_b
@@ -93,7 +98,7 @@ class BayesianFC:
         return tf.exp(-(tf.square(x - mu)) / 2 * tf.square(sigma)) / (tf.sqrt(2 * np.pi) * sigma)
 
     def log_gaussian_pdf(self, x, mu, sigma):
-        pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(tf.clip_by_value(sigma, 1e-3, 1e8))) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-3))
+        pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(sigma + 1e-5)) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-3))
         return pdf_val
         # return tf.clip_by_value(pdf_val, 1e-10, 1.0)
 
