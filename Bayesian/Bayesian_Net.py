@@ -25,7 +25,7 @@ class Bayesian_Net:
         data_loss = 0.0
         for _ in range(N):
             prediction = self.local_reparam_sample(input_tensor)
-            data_loss += tf.reduce_sum(log_gaussian_pdf(input_tensor, prediction, self.likelihood_std))
+            data_loss += tf.reduce_sum(log_gaussian_pdf(prediction, target, self.likelihood_std))
 
         kl_loss = 0.0
         for layer in self.layers:
@@ -33,9 +33,9 @@ class Bayesian_Net:
 
         loss = kl_scaling * kl_loss - data_loss / N
 
-        return loss
+        return loss, kl_scaling * kl_loss, -data_loss / N
 
 
-def log_gaussian_pdf(self, x, mu, sigma):
+def log_gaussian_pdf(x, mu, sigma):
     pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(sigma + 1e-5)) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-3))
     return pdf_val

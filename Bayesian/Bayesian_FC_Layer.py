@@ -7,14 +7,14 @@ class Bayesian_FC:
     def __init__(self, input_dim, output_dim,
                  # Variational
                  qw_mean_initial=0.0,
-                 qw_std_initial=-1.0,
+                 qw_std_initial=1.0,
                  qb_mean_initial=0.0,
-                 qb_std_initial=-1.0,
+                 qb_std_initial=1.0,
                  # Prior
                  pw_mean=0.0,
-                 pw_sigma=2.0,
+                 pw_sigma=1.0,
                  pb_mean=0.0,
-                 pb_sigma=2.0,
+                 pb_sigma=1.0,
                  # Model
                  activation=tf.nn.relu,
                  name="Bayesian_FC_Layer"
@@ -62,8 +62,8 @@ class Bayesian_FC:
             epsilon_w = 0.0
             epsilon_b = 0.0
 
-        W = self.qw_mean + tf.nn.softplus(self.qw_p) * epsilon_w
-        b = self.qb_mean + tf.nn.softplus(self.qb_p) * epsilon_b
+        W = self.qw_mean + self.qw_sigma * epsilon_w
+        b = self.qb_mean + self.qb_sigma * epsilon_b
 
         sample_output = self.activation(tf.matmul(input_tensor, W) + b)
 
@@ -72,12 +72,10 @@ class Bayesian_FC:
     def local_reparam_sample(self, input_tensor):
         x = input_tensor
         batch_size = tf.shape(x)[0]
-        qw_sigma = tf.nn.softplus(self.qw_p)
-        qb_sigma = tf.nn.softplus(self.qb_p)
 
         gamma = tf.matmul(x, self.qw_mean) + self.qb_mean
         # print(gamma)
-        delta = tf.matmul(tf.square(x), tf.square(qw_sigma)) + tf.square(qb_sigma)
+        delta = tf.matmul(tf.square(x), tf.square(self.qw_sigma)) + tf.square(self.qb_sigma)
         # print(delta)
         epsilon = tf.random_normal(shape=(batch_size, self.output_dim))
         # print(epsilon)
