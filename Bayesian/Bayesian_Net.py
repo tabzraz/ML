@@ -29,13 +29,28 @@ class Bayesian_Net:
 
         kl_loss = 0.0
         for layer in self.layers:
-            kl_loss += layer.kl()
+            kl_loss += layer.kl_variational_and_prior()
 
         loss = kl_scaling * kl_loss - data_loss / N
 
         return loss, kl_scaling * kl_loss, -data_loss / N
 
+    def copy_variational_parameters(self):
+        ops = []
+        for layer in self.layers:
+            op = layer.copy_variational_parameters()
+            ops.append(op)
+
+        copy_op = tf.group(*ops)
+        return copy_op
+
+    def kl_new_and_old(self):
+        kl = 0.0
+        for layer in self.layers:
+            kl += layer.kl_new_and_old()
+        return kl
+
 
 def log_gaussian_pdf(x, mu, sigma):
-    pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(sigma + 1e-5)) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-3))
+    pdf_val = -(0.5 * tf.log(2 * np.pi) + tf.log(sigma + 1e-8)) - (tf.square(x - mu) / (2 * tf.square(sigma) + 1e-8))
     return pdf_val

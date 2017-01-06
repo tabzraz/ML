@@ -7,9 +7,9 @@ class Bayesian_FC:
     def __init__(self, input_dim, output_dim,
                  # Variational
                  qw_mean_initial=0.0,
-                 qw_std_initial=1.0,
+                 qw_std_initial=0.1,
                  qb_mean_initial=0.0,
-                 qb_std_initial=1.0,
+                 qb_std_initial=0.1,
                  # Prior
                  pw_mean=0.0,
                  pw_sigma=1.0,
@@ -44,6 +44,12 @@ class Bayesian_FC:
         self.qb_mean = qb_mean
         self.qb_p = qb_p
         self.qb_sigma = tf.nn.softplus(qb_p)
+
+        # Old variational parameters
+        self.old_qw_mean = tf.Variable(self.qw_mean.initialized_value())
+        self.old_qw_sigma = tf.Variable(tf.nn.softplus(self.qw_p.initialized_value()))
+        self.old_qb_mean = tf.Variable(self.qb_mean.initialized_value())
+        self.old_qb_sigma = tf.Variable(tf.nn.softplus(self.qb_p.initialized_value()))
 
         # Prior hyperparameters
         self.pw_mean = pw_mean
@@ -84,11 +90,30 @@ class Bayesian_FC:
 
         return self.activation(noisy_activations)
 
-    def kl(self):
+    def kl_variational_and_prior(self):
         return kl_q_p(self.qw_mean, self.qw_sigma, self.pw_mean, self.pw_sigma) + kl_q_p(self.qb_mean, self.qb_sigma, self.pb_mean, self.pb_sigma)
 
+    def copy_variational_parameters(self):
 
+        old_new = [(self.old_qw_mean, self.qw_mean),
+                   (self.old_qw_sigma, self.qw_sigma),
+                   (self.old_qb_mean, self.qb_mean),
+                   (self.old_qb_sigma, self.qb_sigma)]
+
+        assigns = [old.assign(new) for old, new in old_new]
+        copy_op = tf.group(*assigns)
+
+        return copy_op
+
+    def kl_new_and_old(self):
+        kl_w = kl_q_p(self.qw_mean, self.qw_sigma, self.old_qw_mean, self.old_qw_sigma)
+        kl_b = kl_q_p(self.qb_mean, self.qb_sigma, self.old_qb_mean, self.old_qb_sigma)
+
+        return kl_w + kl_b
+
+
+# KL[q|p] where both q and p are fully factorized gaussians
 def kl_q_p(q_mean, q_sigma, p_mean, p_sigma):
-    log_term = tf.log(p_sigma / (q_sigma + 1e-3))
-    mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-3)
+    log_term = tf.log(p_sigma / (q_sigma + 1e-8))
+    mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-8)
     return tf.reduce_sum(log_term + mean_term) - tf.size(q_mean, out_type=tf.float32) * 0.5
