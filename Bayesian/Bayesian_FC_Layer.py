@@ -51,6 +51,12 @@ class Bayesian_FC:
         self.old_qb_mean = tf.Variable(self.qb_mean.initialized_value())
         self.old_qb_sigma = tf.Variable(tf.nn.softplus(self.qb_p.initialized_value()))
 
+        # Baseline variational parameters
+        self.baseline_qw_mean = tf.Variable(self.qw_mean.initialized_value())
+        self.baseline_qw_sigma = tf.Variable(tf.nn.softplus(self.qw_p.initialized_value()))
+        self.baseline_qb_mean = tf.Variable(self.qb_mean.initialized_value())
+        self.baseline_qb_sigma = tf.Variable(tf.nn.softplus(self.qb_p.initialized_value()))
+
         # Prior hyperparameters
         self.pw_mean = pw_mean
         self.pw_sigma = pw_sigma
@@ -101,6 +107,30 @@ class Bayesian_FC:
                    (self.old_qb_sigma, self.qb_sigma)]
 
         assigns = [old.assign(new) for old, new in old_new]
+        copy_op = tf.group(*assigns)
+
+        return copy_op
+
+    def set_baseline_parameters(self):
+
+        old_new = [(self.baseline_qw_mean, self.qw_mean),
+                   (self.baseline_qw_sigma, self.qw_sigma),
+                   (self.baseline_qb_mean, self.qb_mean),
+                   (self.baseline_qb_sigma, self.qb_sigma)]
+
+        assigns = [old.assign(new) for old, new in old_new]
+        copy_op = tf.group(*assigns)
+
+        return copy_op
+
+    def revert_to_baseline_parameters(self):
+
+        old_new = [(self.baseline_qw_mean, self.qw_mean),
+                   (self.baseline_qw_sigma, self.qw_sigma),
+                   (self.baseline_qb_mean, self.qb_mean),
+                   (self.baseline_qb_sigma, self.qb_sigma)]
+
+        assigns = [old.assign(new) for new, old in old_new]
         copy_op = tf.group(*assigns)
 
         return copy_op

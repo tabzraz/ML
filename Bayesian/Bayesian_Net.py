@@ -44,6 +44,24 @@ class Bayesian_Net:
         copy_op = tf.group(*ops)
         return copy_op
 
+    def set_baseline_parameters(self):
+        ops = []
+        for layer in self.layers:
+            op = layer.set_baseline_parameters()
+            ops.append(op)
+
+        copy_op = tf.group(*ops)
+        return copy_op
+
+    def revert_to_baseline_parameters(self):
+        ops = []
+        for layer in self.layers:
+            op = layer.revert_to_baseline_parameters()
+            ops.append(op)
+
+        copy_op = tf.group(*ops)
+        return copy_op
+
     def kl_new_and_old(self):
         kl = 0.0
         for layer in self.layers:
