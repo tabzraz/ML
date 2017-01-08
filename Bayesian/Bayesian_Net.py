@@ -8,23 +8,11 @@ class Bayesian_Net:
         self.likelihood_std = likelihood_std
         self.layers = layers
 
-    def local_reparam_sample(self, input_tensor):
-        for layer in self.layers:
-            input_tensor = layer.local_reparam_sample(input_tensor)
-
-        return input_tensor
-
-    def sample(self, input_tensor, use_mean=False):
-        for layer in self.layers:
-            input_tensor = layer.sample(input_tensor, use_mean)
-
-        return input_tensor
-
-    def loss(self, input_tensor, target, kl_scaling=1.0, N=4):
+    def loss(self, input_tensor, get_output, target, kl_scaling=1.0, N=4):
 
         data_loss = 0.0
         for _ in range(N):
-            prediction = self.local_reparam_sample(input_tensor)
+            prediction = get_output(input_tensor, local_reparam_trick=True)
             data_loss += tf.reduce_sum(log_gaussian_pdf(prediction, target, self.likelihood_std))
 
         kl_loss = 0.0

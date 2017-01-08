@@ -66,7 +66,13 @@ class Bayesian_FC:
         # Model
         self.activation = activation
 
-    def sample(self, input_tensor, use_mean=False):
+    def sample(self, input_tensor, local_reparam_trick=False, use_mean=False):
+        if local_reparam_trick:
+            return self.local_reparam_sample(input_tensor)
+        else:
+            return self.normal_sample(input_tensor, use_mean)
+
+    def normal_sample(self, input_tensor, use_mean=False):
         epsilon_w = tf.random_normal(shape=(self.input_dim, self.output_dim))
         epsilon_b = tf.random_normal(shape=(self.output_dim, ))
 
