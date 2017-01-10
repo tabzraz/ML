@@ -4,8 +4,8 @@ import tensorflow as tf
 
 class Bayesian_Net:
 
-    def __init__(self, layers, likelihood_std=0.1):
-        self.likelihood_std = likelihood_std
+    def __init__(self, layers, model_probability):
+        self.model_probability = model_probability
         self.layers = layers
 
     def loss(self, input_tensor, get_output, target, kl_scaling=1.0, N=4):
@@ -13,7 +13,8 @@ class Bayesian_Net:
         data_loss = 0.0
         for _ in range(N):
             prediction = get_output(input_tensor, local_reparam_trick=True)
-            data_loss += tf.reduce_sum(log_gaussian_pdf(prediction, target, self.likelihood_std))
+            data_loss += tf.reduce_sum(self.model_probability(prediction, target))
+            # data_loss += tf.reduce_sum(log_gaussian_pdf(prediction, target, self.likelihood_std))
 
         kl_loss = 0.0
         for layer in self.layers:
