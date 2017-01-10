@@ -92,7 +92,7 @@ class Bayesian_Conv:
         W = self.qw_mean + self.qw_sigma * epsilon_w
         b = self.qb_mean + self.qb_sigma * epsilon_b
 
-        conved = tf.nn.conv2d(input_tensor, W, strides=[1, self.strides, self.strides, 1], padding="VALID")
+        conved = tf.nn.conv2d(input_tensor, W, strides=[1, self.filter_stride, self.filter_stride, 1], padding="VALID")
         pre_activation = tf.nn.bias_add(conved, b)
         sample_output = self.activation(pre_activation)
 
@@ -102,10 +102,10 @@ class Bayesian_Conv:
         x = input_tensor
         batch_size = tf.shape(x)[0]
 
-        gamma = tf.nn.conv2d(input_tensor, self.qw_mean, strides=[1, self.strides, self.strides, 1], padding="VALID")
+        gamma = tf.nn.conv2d(input_tensor, self.qw_mean, strides=[1, self.filter_stride, self.filter_stride, 1], padding="VALID")
         gamma = tf.nn.bias_add(gamma, self.qb_mean)
         # print(gamma)
-        delta = tf.nn.conv2d(tf.square(input_tensor), tf.square(self.qw_sigma), strides=[1, self.strides, self.strides, 1], padding="VALID")
+        delta = tf.nn.conv2d(tf.square(input_tensor), tf.square(self.qw_sigma), strides=[1, self.filter_stride, self.filter_stride, 1], padding="VALID")
         delta = tf.nn.bias_add(delta, tf.square(self.qb_sigma))
         # print(delta)
         new_height = tf.shape(gamma)[1]
