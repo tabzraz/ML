@@ -8,7 +8,7 @@ class Bayesian_Net:
         self.model_probability = model_probability
         self.layers = layers
 
-    def loss(self, get_output, target, kl_scaling=1.0, N=4):
+    def loss(self, get_output, target, kl_scaling=1.0, N=4, original_prior=True):
 
         data_loss = 0.0
         for _ in range(N):
@@ -18,7 +18,10 @@ class Bayesian_Net:
 
         kl_loss = 0.0
         for layer in self.layers:
-            kl_loss += layer.kl_variational_and_prior()
+            if original_prior:
+                kl_loss += layer.kl_variational_and_prior()
+            else:
+                kl_loss += layer.kl_new_and_old()
 
         loss = kl_scaling * kl_loss - data_loss / N
 
