@@ -6,7 +6,7 @@ class Bayesian_DeConv:
 
     def __init__(self,
                  # DeConv
-                 input_size,
+                 output_size,
                  input_channels,
                  filters,
                  filter_height=3,
@@ -32,8 +32,8 @@ class Bayesian_DeConv:
         self.filter_height = filter_height
         self.filter_width = filter_width
         self.filter_stride = filter_stride
-        output_height = input_size[0] * filter_stride + (filter_height - 1)
-        output_width = input_size[1] * filter_stride + (filter_width - 1)
+        output_height = output_size[0]
+        output_width = output_size[1]
         self.output_shape = [-1, output_height, output_width, filters]
 
         # Hyperparameters
