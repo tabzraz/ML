@@ -150,6 +150,6 @@ class Bayesian_FC:
 
 # KL[q|p] where both q and p are fully factorized gaussians
 def kl_q_p(q_mean, q_sigma, p_mean, p_sigma):
-    log_term = tf.log(p_sigma / (q_sigma + 1e-8))
-    mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma) + 1e-8)
+    log_term = tf.log(p_sigma / (q_sigma))
+    mean_term = (tf.square(q_sigma) + tf.square(q_mean - p_mean)) / (2.0 * tf.square(p_sigma))
     return tf.reduce_sum(log_term + mean_term) - tf.size(q_mean, out_type=tf.float32) * 0.5
